@@ -1,16 +1,30 @@
-from typing import TypedDict, Annotated, List, Union, Tuple, Sequence
-from langchain_core.agents import AgentAction, AgentFinish
+import operator
+
+from typing import TypedDict, Optional, List, Annotated
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
-import operator
+from playwright.sync_api import Page
+
+class BBox(TypedDict):
+    x: float
+    y: float
+    
+class Prediction(TypedDict):
+    action: str
+    args: Optional[List[str]]
 
 class AgentState(TypedDict):
     '''
     The LangGraph ecosystem will automatically casting the return value of 'each node' into this type structure.
-    '''    
-    messages: Annotated[Sequence[BaseMessage], operator.add]
-
-    agent_outcome: Union[BaseMessage, None]
+    '''
+    page: Page
+    input: str
+    img: str
+    bboxes: List[BBox]
+    prediction: Prediction
+    
+    scratchpad: Annotated[List[BaseMessage], operator.add]
+    observation: str
     
 class SearchTool(BaseModel):
     '''

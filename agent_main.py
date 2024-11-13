@@ -1,96 +1,98 @@
+from IPython import display
+from playwright.async_api import async_playwright
 from dotenv import load_dotenv
-import functools 
 
+from langchain import hub 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_experimental.tools import PythonREPLTool
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 
-from langgraph.graph import START, END, StateGraph
-from langgraph.prebuilt import create_react_agent
+from langgraph.graph import END, START, StateGraph
 
-from state import AgentState, SearchTool
 from utils_function.agent_utils import *
-from utils import create_agent
 from tools.tool_descriptions import *
+from utils import update_scratchpad
 
 load_dotenv()
 
-search_tool = TavilySearchResults(max_results=1, args_schema=SearchTool)
-python_tool = PythonREPLTool()
+prompt = hub.pull("wfh/web-voyager")
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-1.5-flash",
     temperature=0,
 )
 
-members = ["Researcher", "Coder"]
-options = ["FINISH"] + members
-supervisor_prompt = (
-    "You are a supervisor tasked with managing a conversation between the following workers: {members}. " 
-    "Given the following user request, response with the worker to act next. "
-    "Each worker will perform a task and respond with their results and status. "
-    "Given the conversation below, who should act next? Or should we FINISH? Select one of {options}"
-)
-
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", supervisor_prompt),
-        MessagesPlaceholder(variable_name="messages"),
-    ]
-).partial(options=str(options), members=", ".join(members))
-
-supervisor_agent = prompt | llm.with_structured_output(schema=routeResponse)
-supervisor_node = functools.partial(
-    run_supervisor,
-    agent_runnable=supervisor_agent
-)
-
-research_agent = create_react_agent(
-    model=llm,
-    tools=[search_tool]
-)
-research_node = functools.partial(
-    run_agent,
-    agent_runnable=research_agent,
-    name="Researcher"
-)
-
-code_agent = create_agent(
-    model=llm,
-)
-code_node = functools.partial(
-    run_agent,
-    agent_runnable=code_agent,
-    name="Coder"
+agent = annotate | RunnablePassthrough.assign(
+    prediction=format_descriptions | prompt | llm | StrOutputParser() | parse
 )
 
 workflow = StateGraph(state_schema=AgentState)
-workflow.add_node("Researcher", research_node)
-workflow.add_node("Coder", code_node)
-workflow.add_node("Supervisor", supervisor_node)
+workflow.add_node("agent", agent)
+workflow.add_edge(start_key=START, end_key="agent")
 
-for member in members:
-    workflow.add_edge(member, "Supervisor")
-    
-workflow.add_conditional_edges(
-    "Supervisor",
-    lambda x: x["agent_outcome"],
-    {
-        "Researcher": "Researcher",
-        "Coder": "Coder",
-        "FINISH": END
-    }
-)
+workflow.add_node("update_scratchpad", update_scratchpad)
+workflow.add_edge("update_scratchpad", end_key="agent")
 
-workflow.add_edge(START, "Supervisor")
-graph = workflow.compile()
-
-input = {
-    # "messages": [HumanMessage(content="Code hello world and print it to the terminal", name="Human")],
-    "messages": [HumanMessage(content="Research and write a code to crawl the research study on pikas.", name="Human")],
+tools = {
+    "Click": click,
+    "Type": type_text,
+    "Scroll": scroll,
+    "Wait": wait,
+    "GoBack": go_back,
+    "Google": to_google,
 }
 
-for s in graph.stream(input):
-    print(s)
-    print("----------------------------------------")
+for node_name, tool in tools.items():
+    workflow.add_node(
+        node_name,
+        RunnableLambda(tool) | (lambda observation: {"observation": observation})
+    )
+    
+    workflow.add_edge(node_name, "update_scratchpad")
+    
+def select_tool(state: AgentState):
+    action = state["prediction"]["action"]
+    if "ANSWER" in action:
+        return END
+    if "retry" in action:
+        return "agent"
+    return action
+
+workflow.add_conditional_edges("agent", select_tool)
+
+graph = workflow.compile()
+
+async def call_agent(question: str, page, max_step: int = 150):
+    input_state = {
+        "page": page,
+        "input": question,
+        "scratchpad": [],
+        "observation": "",
+    }
+    event_stream = graph.astream(input_state)
+    
+    final_answer = None
+    steps = []
+    async for event in event_stream:
+        if "agent" not in event:
+            continue
+        pred = event["agent"].get("prediction") or {}
+        action = pred.get("action")
+        action_input = pred.get("args")
+        display.clear_output(wait=False)
+        steps.append(f"{len(steps) + 1}. {action}: {action_input}")
+        print("\n".join(steps))
+        if "ANSWER" in action:
+            final_answer = action_input
+            break
+    return final_answer
+
+# Start the neccesary components
+async def main():
+    browser = await async_playwright().start()
+    browser = await browser.chromium.launch(headless=True, args=None)
+    page = await browser.new_page()
+    await page.goto("https://www.google.com")
+
+    result = await call_agent("Could you explain the WebVoyager paper (on arxiv)?", page)
+    print(result)
