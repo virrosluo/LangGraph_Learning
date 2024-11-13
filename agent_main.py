@@ -1,11 +1,11 @@
 from IPython import display
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv
 
 from langchain import hub 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
 from langgraph.graph import END, START, StateGraph
 
@@ -22,9 +22,7 @@ llm = ChatGoogleGenerativeAI(
     temperature=0,
 )
 
-agent = annotate | RunnablePassthrough.assign(
-    prediction=format_descriptions | prompt | llm | StrOutputParser() | parse
-)
+agent = annotate | RunnablePassthrough.assign(prediction=format_descriptions | prompt | llm | StrOutputParser() | parse) | RunnablePassthrough.assign(scratchpad=lambda x: [])
 
 workflow = StateGraph(state_schema=AgentState)
 workflow.add_node("agent", agent)
@@ -62,37 +60,39 @@ workflow.add_conditional_edges("agent", select_tool)
 
 graph = workflow.compile()
 
-async def call_agent(question: str, page, max_step: int = 150):
+def call_agent(question: str, page, max_step: int = 150):
     input_state = {
         "page": page,
         "input": question,
         "scratchpad": [],
         "observation": "",
     }
-    event_stream = graph.astream(input_state)
+    event_stream = graph.stream(input_state)
     
     final_answer = None
-    steps = []
-    async for event in event_stream:
+    step = 0
+    for event in event_stream:
         if "agent" not in event:
             continue
         pred = event["agent"].get("prediction") or {}
         action = pred.get("action")
         action_input = pred.get("args")
         display.clear_output(wait=False)
-        steps.append(f"{len(steps) + 1}. {action}: {action_input}")
-        print("\n".join(steps))
+        print(f"{step + 1}. {action}: {action_input}")
+        step += 1
         if "ANSWER" in action:
             final_answer = action_input
             break
     return final_answer
 
 # Start the neccesary components
-async def main():
-    browser = await async_playwright().start()
-    browser = await browser.chromium.launch(headless=True, args=None)
-    page = await browser.new_page()
-    await page.goto("https://www.google.com")
+def main():
+    browser = sync_playwright().start()
+    browser = browser.chromium.launch(headless=True, args=None)
+    page = browser.new_page()
+    page.goto("https://www.google.com")
 
-    result = await call_agent("Could you explain the WebVoyager paper (on arxiv)?", page)
+    result = call_agent("Give me a summary about cabibara?", page)
     print(result)
+    
+main()

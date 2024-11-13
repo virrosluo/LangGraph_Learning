@@ -1,11 +1,12 @@
 import asyncio
 import platform
 import base64
+import time
 
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.runnables import chain as chain_decorator
 
-from playwright.async_api import Page
+from playwright.sync_api import Page
 
 from state import AgentState
 
@@ -24,7 +25,7 @@ def run_agent(data, agent_runnable, name):
         messages=[message]
     )
     
-async def click(state: AgentState):
+def click(state: AgentState):
     page = state["page"]
     click_args = state["prediction"]["args"]
     if click_args is None or len(click_args) != 1:
@@ -36,10 +37,10 @@ async def click(state: AgentState):
     except Exception:
         return f"Error: no bbox for : {bbox_id}"
     x, y = bbox["x"], bbox["y"]
-    await page.mouse.click(x, y)
+    page.mouse.click(x, y)
     return {"observation": f"Clicked {bbox_id}"}
 
-async def type_text(state: AgentState):
+def type_text(state: AgentState):
     page = state["page"]
     type_args = state["prediction"]["args"]
     if type_args is None or len(type_args) != 2:
@@ -49,18 +50,18 @@ async def type_text(state: AgentState):
     bbox = state["bboxes"][bbox_id]
     x, y = bbox["x"], bbox["y"]
     text_content = type_args[1]
-    await page.mouse.click(x, y)
+    page.mouse.click(x, y)
     
     select_all = "Meta+A" if platform.system() == "Darwin" else "Control+A"
-    await page.keyboard.press(select_all)
-    await page.keyboard.press("Backspace")
-    await page.keyboard.type(text_content)
-    await page.keyboard.press("Enter")
+    page.keyboard.press(select_all)
+    page.keyboard.press("Backspace")
+    page.keyboard.type(text_content)
+    page.keyboard.press("Enter")
     return {
         "observation": f"Typed {text_content} and submitted"
     }
 
-async def scroll(state: AgentState):
+def scroll(state: AgentState):
     page = state["page"]
     scroll_args = state["prediction"]["args"]
     if scroll_args is None or len(scroll_args) != 2:
@@ -73,7 +74,7 @@ async def scroll(state: AgentState):
         scroll_direction = (
             -scroll_amount if direction.lower() == "up" else scroll_amount
         )
-        await page.evaluate(f"window.scrollBy(0, {scroll_direction})")
+        page.evaluate(f"window.scrollBy(0, {scroll_direction})")
     else:
         scroll_amount = 200
         target_id = int(target)
@@ -82,48 +83,47 @@ async def scroll(state: AgentState):
         scroll_direction = (
             -scroll_amount if direction.lower() == "up" else scroll_amount
         )
-        await page.mouse.move(x, y)
-        await page.mouse.wheel(0, scroll_direction)
+        page.mouse.move(x, y)
+        page.mouse.wheel(0, scroll_direction)
         
     return {"observation": f"Scrolled {direction} in {'window' if target.upper() == 'WINDOW' else 'element'}"}
 
-async def wait(state: AgentState):
+def wait(state: AgentState):
     sleep_time = 5
-    await asyncio.sleep(sleep_time)
+    time.sleep(sleep_time)
     return {"observation": f"Waited for {sleep_time}s."}
 
-async def go_back(state: AgentState):
+def go_back(state: AgentState):
     page = state["page"]
-    await page.go_back()
+    page.go_back()
     return {"observation": f"Navigated back a page to {page.url}."}
 
-async def to_google(state: AgentState):
+def to_google(state: AgentState):
     page = state["page"]
-    await page.goto("https://www.google.com")
+    page.goto("https://www.google.com")
     return {"observation": f"Navigated to google.com."}
 
 with open("mark_page.js") as f:
     mark_page_script = f.read()
 
 @chain_decorator
-async def mark_page(page: Page):
-    await page.evaluate(mark_page_script)
+def mark_page(page: Page):
+    page.evaluate(mark_page_script)
     for _ in range(10):
         try:
-            bboxes = await page.evaluate("markPage()")
+            bboxes = page.evaluate("markPage()")
             break
         except:
-            print("NEED SLEEP ON MARK_PAGE")
-            asyncio.sleep(3)
-    screenshot = await page.screenshot()
-    await page.evaluate("unmarkPage()")
+            time.sleep(3)
+    screenshot = page.screenshot()
+    page.evaluate("unmarkPage()")
     return {
         "img": base64.b64encode(screenshot).decode(),
         "bboxes": bboxes
     }
 
-async def annotate(state):
-    marked_page = await mark_page.with_retry().ainvoke(state["page"])
+def annotate(state):
+    marked_page = mark_page.with_retry().invoke(state["page"])
     return {**state, **marked_page}
 
 def format_descriptions(state: AgentState):
@@ -137,7 +137,7 @@ def format_descriptions(state: AgentState):
     bbox_descriptions = "\nValid Bounding Boxes:\n" + "\n".join(labels)
     return {**state, "bbox_descriptions": bbox_descriptions}
 
-def parse(text: str) -> dict:
+def parse(text: dict) -> dict:
     action_prefix = "Action: "
     if not text.strip().split("\n")[-1].startswith(action_prefix):
         return {"action": "retry", "args": f"Could not parse LLM Output: {text}"}
