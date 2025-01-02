@@ -8,3 +8,4 @@ langchain-experimental==0.3.3
 
 playwright==1.48.0
 ipython==8.29.0
+streamlit==1.41.0

@@ -13,6 +13,9 @@ from utils_function.agent_utils import *
 from tools.tool_descriptions import *
 from utils import update_scratchpad
 
+from PIL import Image
+from io import BytesIO
+
 load_dotenv()
 
 prompt = hub.pull("wfh/web-voyager")
@@ -60,6 +63,11 @@ workflow.add_conditional_edges("agent", select_tool)
 
 graph = workflow.compile()
 
+from playwright.sync_api import sync_playwright
+import base64
+from PIL import Image
+from io import BytesIO
+    
 def call_agent(question: str, page, max_step: int = 150):
     input_state = {
         "page": page,
@@ -69,7 +77,6 @@ def call_agent(question: str, page, max_step: int = 150):
     }
     event_stream = graph.stream(input_state)
     
-    final_answer = None
     step = 0
     for event in event_stream:
         if "agent" not in event:
@@ -77,22 +84,39 @@ def call_agent(question: str, page, max_step: int = 150):
         pred = event["agent"].get("prediction") or {}
         action = pred.get("action")
         action_input = pred.get("args")
-        display.clear_output(wait=False)
-        print(f"{step + 1}. {action}: {action_input}")
+
+        img_data = None
+        if "img" in event["agent"]:
+            img_data = Image.open(BytesIO(base64.b64decode(event["agent"]["img"])))
+        
+        yield (f"{step + 1}. {action}: {action_input}", img_data)
+        
         step += 1
-        if "ANSWER" in action:
-            final_answer = action_input
+        if "ANSWER" in action or step >= max_step:
             break
-    return final_answer
+    return
 
-# Start the neccesary components
-def main():
-    browser = sync_playwright().start()
-    browser = browser.chromium.launch(headless=True, args=None)
-    page = browser.new_page()
-    page.goto("https://www.google.com")
+# # Start the necessary components
+# def search(question, max_step):
+#     p = sync_playwright().start()
+#     browser = p.chromium.launch(headless=True, args=None)
+#     page = browser.new_page()
+#     page.goto("https://www.google.com")
 
-    result = call_agent("Give me a summary about cabibara?", page)
-    print(result)
+#     for step_info, img in call_agent(question, page, max_step=max_step):
+#         yield step_info, img
+        
+#     browser.close()
+#     p.stop()
     
-main()
+# # Start the neccesary components
+# def main():
+#     browser = sync_playwright().start()
+#     browser = browser.chromium.launch(headless=True, args=None)
+#     page = browser.new_page()
+#     page.goto("https://www.google.com")
+
+#     result = call_agent("Give me a summary about cabibara?", page, max_step=3)
+#     print(result)
+    
+# main()

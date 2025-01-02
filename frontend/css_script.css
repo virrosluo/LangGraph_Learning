@@ -1,0 +1,52 @@
+/* Make the entire page content centered and wider */
+.main {
+    max-width: 100%;
+    padding-left: 20px;  /* Increase the left padding */
+    padding-right: 20px; /* Increase the right padding */
+}
+
+/* Center the layout with a max width */
+.block-container {
+    max-width: 1200px;  /* Adjust this width for the larger centered content */
+    margin: 0 auto;  /* Center content horizontally */
+    padding: 2rem;  /* Add more padding around the content */
+}
+
+/* Increase font size for all text */
+body {
+    font-size: 20px;  /* Adjust this to your preferred global font size */
+}
+
+/* Increase font size for headers */
+h1, h2, h3, h4, h5, h6 {
+    font-size: 30px;  /* Adjust header sizes */
+}
+
+/* Increase size for buttons */
+.stButton>button {
+    font-size: 18px;  /* Adjust button font size */
+    padding: 15px 25px;  /* Increase button padding */
+}
+
+/* Increase size for sliders */
+.stSlider>div>input {
+    height: 40px;  /* Increase slider handle size */
+    width: 100%;
+}
+
+/* Increase size for input fields */
+.stTextInput>div>input, .stTextArea>div>textarea {
+    font-size: 20px;  /* Adjust text input size */
+}
+
+/* Increase size for selectboxes */
+.stSelectbox>div>div {
+    font-size: 18px;  /* Adjust selectbox text size */
+}
+
+/* Make images bigger and responsive */
+.stImage>img {
+    max-width: 100%;  /* Ensure images are responsive */
+    height: auto;
+    max-height: 500px;  /* Adjust max height */
+}
