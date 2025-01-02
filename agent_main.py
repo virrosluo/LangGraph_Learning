@@ -86,11 +86,12 @@ workflow.add_conditional_edges(
 workflow.add_edge(START, "Supervisor")
 graph = workflow.compile()
 
-input = {
-    # "messages": [HumanMessage(content="Code hello world and print it to the terminal", name="Human")],
-    "messages": [HumanMessage(content="Research and write a code to crawl the research study on pikas.", name="Human")],
-}
+if __name__ == "__main__":
+    input = {
+        # "messages": [HumanMessage(content="Code hello world and print it to the terminal", name="Human")],
+        "messages": [HumanMessage(content="Research and write a code to crawl the research study on pikas.", name="Human")],
+    }
 
-for s in graph.stream(input):
-    print(s)
-    print("----------------------------------------")
+    for s in graph.stream(input):
+        print(s)
+        print("----------------------------------------")
